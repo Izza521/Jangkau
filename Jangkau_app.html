@@ -550,29 +550,54 @@ nav.tabs button[aria-current="page"] svg { stroke: var(--green); }
     $("wave").innerHTML = html;
   }
   function stopPlay() {
-    playing = false; clearInterval(playTimer);
+    playing = false; clearInterval(playTimer); playToken++;
     $("playBtn").innerHTML = "&#9654;"; $("playBtn").setAttribute("aria-label", "Play story");
     try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
   }
+  var playToken = 0;
   $("playBtn").addEventListener("click", function () {
     if (playing) { stopPlay(); return; }
     var p = post(current); if (!p) return;
     playing = true;
+    var token = ++playToken;
     $("playBtn").innerHTML = "&#10074;&#10074;"; $("playBtn").setAttribute("aria-label", "Pause story");
-    try {
-      if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
-        var u = new SpeechSynthesisUtterance(txt(p).t + ". " + txt(p).x);
+    var full = txt(p).t + ". " + txt(p).x;
+    // Split into sentences: long single utterances get cut off on some phones
+    var parts = full.match(/[^.!?]+[.!?]*/g) || [full];
+    parts = parts.map(function (s) { return s.trim(); }).filter(function (s) { return s.length; });
+    var totalChars = parts.join(" ").length;
+    var estMs = Math.max(6000, totalChars * 70);   // rough reading time, only for the waveform
+    var start = Date.now();
+    var canSpeak = false;
+    try { canSpeak = !!(window.speechSynthesis && window.SpeechSynthesisUtterance); } catch (e) {}
+    if (canSpeak) {
+      try { if (window.speechSynthesis.speaking || window.speechSynthesis.pending) window.speechSynthesis.cancel(); } catch (e) {}
+      var idx = 0, doneChars = 0;
+      var speakNext = function () {
+        if (!playing || token !== playToken) return;
+        if (idx >= parts.length) { finishPlay(); return; }
+        var u = new SpeechSynthesisUtterance(parts[idx]);
         u.lang = lang === "bm" ? "ms-MY" : "en-GB"; u.rate = 0.95;
-        u.onend = function () { if (playing) finishPlay(); };
-        window.speechSynthesis.speak(u);
-      }
-    } catch (e) {}
-    var start = Date.now(), dur = 12000;
-    playTimer = setInterval(function () {
-      var pr = Math.min(1, (Date.now() - start) / dur);
-      drawWave(pr);
-      if (pr >= 1) finishPlay();
-    }, 250);
+        u.onend = function () { doneChars += parts[idx].length + 1; idx++; speakNext(); };
+        u.onerror = function () { idx++; speakNext(); };
+        try { window.speechSynthesis.speak(u); } catch (e) { idx++; speakNext(); }
+      };
+      speakNext();
+      playTimer = setInterval(function () {
+        if (token !== playToken) return;
+        // keep the waveform moving, but never finish before the voice does
+        var pr = Math.min(0.97, (Date.now() - start) / estMs);
+        drawWave(Math.max(pr, doneChars / totalChars * 0.97));
+        try { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); } catch (e) {}
+      }, 250);
+    } else {
+      // no voice on this device: animate the waveform for the estimated reading time
+      playTimer = setInterval(function () {
+        var pr = Math.min(1, (Date.now() - start) / estMs);
+        drawWave(pr);
+        if (pr >= 1) finishPlay();
+      }, 250);
+    }
   });
   function finishPlay() {
     stopPlay(); drawWave(1);
