@@ -5,7 +5,7 @@ Sime Darby Property University Hackathon 2026 · People track · The Null Pointe
 *Jangkau* means "step" in Iban and "reach out" in Malay. Smart step tiles, adaptive path lights, QR story posts and opt-in neighbour walks help new residents in Elmina Central Park meet each other.
 
 ## Links
-- **Resident app (opened by QR codes):** https://izza521.github.io/jangkau/Jangkau_app.html
+- **Resident app (opened by QR codes):** https://izza521.github.io/Jangkau/Jangkau_app.html
 - **Wokwi simulation:** [paste Wokwi link]
 - **Presentation video:** [paste YouTube link]
 
