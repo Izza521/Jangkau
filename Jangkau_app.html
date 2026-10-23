@@ -1,0 +1,763 @@
+<title>Jangkau</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Bodoni+Moda:ital,opsz,wght@0,6..96,600;1,6..96,500&family=Work+Sans:wght@400;500;600;700&display=swap">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+/* Layout: one phone-width column; sticky top bar, scrolling view, fixed bottom tab bar. Same palette as the Jangkau deck and dashboard. */
+:root {
+  --bg: #f1f0ea;
+  --surface: #fbfaf6;
+  --line: #ddd8ca;
+  --fg: #121a16;
+  --muted: #5b655f;
+  --green: #1e4d3a;
+  --green-ink: #f1f0ea;
+  --amber: #f2a93b;
+  --amber-soft: #f8e2bd;
+  --amber-ink: #7a4a07;
+  --red: #c2412d;
+  --red-soft: #f6dcd5;
+  --night: #0f1813;
+  --night-fg: #f1f0ea;
+  --font-display: "Bodoni Moda", Georgia, "Times New Roman", serif;
+  --font-label: "Anton", Impact, "Arial Narrow", sans-serif;
+  --font-body: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1813; --surface: #18221d; --line: #2b3732; --fg: #ece9df; --muted: #a2aca5;
+    --green: #2c6a51; --green-ink: #f1f0ea; --amber-soft: #4a3518; --amber-ink: #f2c47a;
+    --red: #f08a74; --red-soft: #45201a; --night: #070b09; --night-fg: #ece9df; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1813; --surface: #18221d; --line: #2b3732; --fg: #ece9df; --muted: #a2aca5;
+  --green: #2c6a51; --green-ink: #f1f0ea; --amber-soft: #4a3518; --amber-ink: #f2c47a;
+  --red: #f08a74; --red-soft: #45201a; --night: #070b09; --night-fg: #ece9df; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--night); }
+.app { max-width: 480px; margin: 0 auto; min-height: 100vh; padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+.pad { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--night); color: var(--night-fg); }
+header.top .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-block: 12px; }
+.brand { font: 600 26px/1 var(--font-display); letter-spacing: .01em; }
+.brand em { font-style: italic; font-weight: 500; color: var(--amber); }
+.place { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; opacity: .7; margin-top: 3px; }
+.top-right { display: flex; align-items: center; gap: 8px; }
+.lang { display: inline-flex; border: 1px solid rgba(255,255,255,.25); border-radius: 999px; overflow: hidden; }
+.lang button { background: transparent; color: inherit; border: 0; font: 600 12px var(--font-body); padding: 6px 10px; cursor: pointer; }
+.lang button[aria-pressed="true"] { background: var(--amber); color: #1d1408; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: #8a8f86; flex: none; }
+.dot.live { background: #5fd38a; box-shadow: 0 0 0 4px rgba(95,211,138,.22); }
+
+main { padding-block: 16px 8px; }
+.view[hidden] { display: none !important; }
+h2 { font: 600 28px/1.1 var(--font-display); margin: 4px 0 6px; text-wrap: balance; }
+h2 em { font-style: italic; font-weight: 500; }
+h3 { font: 600 17px/1.25 var(--font-body); margin: 0 0 4px; }
+.kicker { font: 400 13px/1 var(--font-label); letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.lead { color: var(--muted); margin: 0 0 14px; }
+.small { font-size: 13px; color: var(--muted); }
+.stack { display: flex; flex-direction: column; gap: 12px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+.card.green { background: var(--green); color: var(--green-ink); border-color: var(--green); }
+.card.green .small { color: rgba(241,240,234,.78); }
+.card.amber { background: var(--amber-soft); border-color: transparent; }
+.card.alert { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+
+button.btn { font: 600 15px var(--font-body); border-radius: 12px; padding: 12px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; min-height: 46px; }
+button.btn.primary { background: var(--green); color: var(--green-ink); border-color: var(--green); }
+button.btn.gold { background: var(--amber); color: #1d1408; border-color: var(--amber); }
+button.btn.block { width: 100%; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.btnrow { display: flex; gap: 10px; }
+.btnrow > * { flex: 1; }
+
+.banner { display: flex; gap: 10px; align-items: center; background: var(--amber-soft); color: var(--amber-ink); border-radius: 12px; padding: 10px 12px; font-size: 14px; font-weight: 600; margin-bottom: 12px; }
+
+/* map */
+.map { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: #dfe8d8; }
+.map svg { display: block; width: 100%; height: auto; }
+.map .zone { font: 600 11px var(--font-body); fill: #1e4d3a; letter-spacing: .06em; }
+.map .pin { cursor: pointer; }
+.map .pin circle { fill: var(--red); stroke: #fff; stroke-width: 3; }
+.map .pin.done circle { fill: #1e4d3a; }
+.map .pin text { fill: #fff; font: 700 13px var(--font-body); }
+.map .pin:focus-visible circle { stroke: var(--amber); stroke-width: 5; }
+
+.story-list { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+.story-item { display: flex; gap: 12px; align-items: center; width: 100%; text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; cursor: pointer; color: var(--fg); font: inherit; }
+.num { width: 30px; height: 30px; border-radius: 50%; background: var(--red); color: #fff; font: 700 14px var(--font-body); display: grid; place-items: center; flex: none; }
+.num.done { background: var(--green); }
+.story-item .t { font-weight: 600; line-height: 1.25; }
+.story-item .s { font-size: 12.5px; color: var(--muted); }
+.story-item > div { min-width: 0; }
+
+/* story player */
+.player { background: var(--night); color: var(--night-fg); border-radius: 16px; padding: 16px; }
+.player .kicker { color: var(--amber); }
+.player h2 { color: var(--night-fg); }
+.wave { display: flex; align-items: center; gap: 3px; height: 40px; margin: 12px 0; }
+.wave i { flex: 1; background: rgba(241,240,234,.25); border-radius: 2px; }
+.wave i.on { background: var(--amber); }
+.player .ctrl { display: flex; align-items: center; gap: 12px; }
+.play { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--amber); color: #1d1408; font-size: 20px; cursor: pointer; flex: none; }
+.player p { margin: 12px 0 0; color: rgba(241,240,234,.9); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.chip { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--amber-soft); color: var(--amber-ink); }
+.chip.g { background: rgba(255,255,255,.12); color: var(--night-fg); }
+
+/* walk */
+.partner { display: flex; gap: 12px; align-items: center; }
+.avatar { width: 52px; height: 52px; border-radius: 50%; background: var(--amber); color: #1d1408; font: 700 18px var(--font-body); display: grid; place-items: center; flex: none; }
+.checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.checks li { display: flex; gap: 12px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.checks li > div { flex: 1; min-width: 0; }
+.checks li.done { border-color: var(--green); }
+.checks li.done .num { background: var(--green); }
+.checks li button { flex: none; }
+.progress { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 10px 0 4px; }
+.progress i { display: block; height: 100%; background: var(--amber); transition: width .4s; }
+.celebrate { text-align: center; padding: 24px 16px; border-radius: 16px; background: var(--night); color: var(--night-fg); position: relative; overflow: hidden; }
+.celebrate h2 { color: var(--amber); font-size: 32px; }
+.glowpath { display: flex; gap: 6px; justify-content: center; margin: 16px 0; }
+.glowpath i { width: 26px; height: 14px; border-radius: 4px; background: #3a3220; }
+.glowpath.on i { background: #ffc24a; box-shadow: 0 0 14px 4px rgba(255,194,74,.55); animation: pulse 1.2s ease-in-out infinite; }
+.glowpath.on i:nth-child(2) { animation-delay: .1s } .glowpath.on i:nth-child(3) { animation-delay: .2s } .glowpath.on i:nth-child(4) { animation-delay: .3s }
+.glowpath.on i:nth-child(5) { animation-delay: .4s } .glowpath.on i:nth-child(6) { animation-delay: .5s } .glowpath.on i:nth-child(7) { animation-delay: .6s }
+@keyframes pulse { 50% { opacity: .55; } }
+
+/* forms */
+label.f { display: block; font-size: 13px; font-weight: 600; margin: 12px 0 6px; }
+input[type=text], textarea, select { width: 100%; font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+textarea { min-height: 110px; resize: vertical; }
+.radio { display: flex; flex-direction: column; gap: 8px; }
+.radio label { display: flex; gap: 10px; align-items: flex-start; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; cursor: pointer; font-size: 14px; }
+.radio input { margin-top: 3px; accent-color: var(--green); }
+.radio b { display: block; }
+.check { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; margin-top: 12px; }
+.check input { margin-top: 3px; accent-color: var(--green); }
+.mystories { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px; }
+.mystories li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; gap: 10px; }
+.mystories li > div { min-width: 0; }
+.status { font-size: 12px; font-weight: 600; white-space: nowrap; color: var(--amber-ink); background: var(--amber-soft); padding: 3px 8px; border-radius: 999px; height: fit-content; }
+
+/* tonight */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; text-align: center; }
+.stat b { display: block; font: 400 30px/1.1 var(--font-label); color: var(--green); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 12px; color: var(--muted); }
+.lamps { display: flex; gap: 4px; margin: 10px 0 4px; }
+.lamps i { flex: 1; height: 12px; border-radius: 3px; background: rgba(241,240,234,.18); transition: background .4s, box-shadow .4s; }
+.wx { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; text-align: center; }
+.wx b { display: block; font: 400 24px/1.1 var(--font-label); font-variant-numeric: tabular-nums; }
+.wx span { font-size: 12px; color: var(--muted); }
+details.settings { margin-top: 4px; }
+details.settings summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.inline { display: flex; gap: 8px; margin-top: 8px; }
+.inline input { flex: 1; min-width: 0; }
+
+/* tab bar */
+nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom, 0px); padding-left: env(safe-area-inset-left, 0px); padding-right: env(safe-area-inset-right, 0px); }
+nav.tabs .inner { max-width: 480px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); }
+nav.tabs button { background: transparent; border: 0; color: var(--muted); font: 600 12px var(--font-body); padding: 8px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; min-height: 60px; }
+nav.tabs button svg { width: 24px; height: 24px; }
+nav.tabs button[aria-current="page"] { color: var(--green); }
+nav.tabs button[aria-current="page"] svg { stroke: var(--green); }
+:root[data-theme="dark"] nav.tabs button[aria-current="page"], :root[data-theme="dark"] nav.tabs button[aria-current="page"] svg { color: var(--amber); stroke: var(--amber); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) nav.tabs button[aria-current="page"], :root:not([data-theme="light"]) nav.tabs button[aria-current="page"] svg { color: var(--amber); stroke: var(--amber); } }
+
+.toast { position: fixed; left: 50%; bottom: calc(88px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--night); color: var(--night-fg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; z-index: 9; max-width: calc(100% - 32px); text-align: center; }
+.foot { font-size: 11.5px; color: var(--muted); margin-top: 18px; }
+@media (prefers-reduced-motion: reduce) { .glowpath.on i { animation: none; } .progress i, .lamps i { transition: none; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="row pad">
+      <div>
+        <div class="brand">Jangkau</div>
+        <div class="place" id="placeLine">Elmina Central Park</div>
+      </div>
+      <div class="top-right">
+        <span class="dot" id="rigDot" title="Path connection"></span>
+        <div class="lang" role="group" aria-label="Language">
+          <button type="button" id="langEN" aria-pressed="true">EN</button>
+          <button type="button" id="langBM" aria-pressed="false">BM</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="pad">
+    <!-- EXPLORE -->
+    <section class="view" id="v-explore">
+      <div class="kicker" data-t="exploreKicker"></div>
+      <h2 data-t="exploreTitle"></h2>
+      <p class="lead" data-t="exploreLead"></p>
+      <div class="map" id="map"></div>
+      <div class="story-list" id="storyList"></div>
+    </section>
+
+    <!-- STORY -->
+    <section class="view" id="v-story" hidden>
+      <div class="banner" id="scanBanner" hidden></div>
+      <button type="button" class="btn" id="backBtn" style="margin-bottom:12px" data-t="back"></button>
+      <div class="player">
+        <div class="kicker" id="sPlace"></div>
+        <h2 id="sTitle"></h2>
+        <div class="wave" id="wave" aria-hidden="true"></div>
+        <div class="ctrl">
+          <button type="button" class="play" id="playBtn" aria-label="Play story">&#9654;</button>
+          <div>
+            <div style="font-weight:600" id="sBy"></div>
+            <div class="small" style="color:rgba(241,240,234,.7)" id="sLen"></div>
+          </div>
+        </div>
+        <p id="sText"></p>
+        <div class="meta" id="sMeta"></div>
+      </div>
+      <div class="stack" style="margin-top:12px">
+        <button type="button" class="btn primary block" id="sWalk" data-t="startWalkHere"></button>
+        <button type="button" class="btn block" id="sReply" data-t="addYours"></button>
+      </div>
+    </section>
+
+    <!-- WALK -->
+    <section class="view" id="v-walk" hidden></section>
+
+    <!-- SHARE -->
+    <section class="view" id="v-share" hidden>
+      <div class="kicker" data-t="shareKicker"></div>
+      <h2 data-t="shareTitle"></h2>
+      <p class="lead" data-t="shareLead"></p>
+      <form id="shareForm" novalidate>
+        <label class="f" for="fPlace" data-t="fPlace"></label>
+        <select id="fPlace"></select>
+        <label class="f" for="fTitle" data-t="fTitle"></label>
+        <input type="text" id="fTitle" maxlength="70" autocomplete="off">
+        <label class="f" for="fStory" data-t="fStory"></label>
+        <textarea id="fStory" maxlength="900"></textarea>
+        <div class="small" data-t="fVoice"></div>
+        <label class="f" data-t="fWho"></label>
+        <div class="radio" role="radiogroup">
+          <label><input type="radio" name="consent" value="all" checked><span><b data-t="cAll"></b><span class="small" data-t="cAllS"></span></span></label>
+          <label><input type="radio" name="consent" value="nb"><span><b data-t="cNb"></b><span class="small" data-t="cNbS"></span></span></label>
+          <label><input type="radio" name="consent" value="me"><span><b data-t="cMe"></b><span class="small" data-t="cMeS"></span></span></label>
+        </div>
+        <label class="check"><input type="checkbox" id="fConsent"><span data-t="fConsent"></span></label>
+        <div class="small" id="formMsg" style="color:var(--red);min-height:20px;margin-top:6px"></div>
+        <button type="submit" class="btn primary block" data-t="send"></button>
+      </form>
+      <h3 style="margin-top:22px" data-t="myStories"></h3>
+      <ul class="mystories" id="myStories"></ul>
+    </section>
+
+    <!-- TONIGHT -->
+    <section class="view" id="v-tonight" hidden>
+      <div class="kicker" data-t="tonightKicker"></div>
+      <h2 data-t="tonightTitle"></h2>
+      <div class="stack">
+        <div class="card alert" id="floodCard" hidden></div>
+        <div class="card" style="background:var(--night);color:var(--night-fg);border-color:var(--night)">
+          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+            <h3 data-t="pathLights"></h3><span class="chip" id="modeChip"></span>
+          </div>
+          <div class="lamps" id="lampRow"></div>
+          <div class="small" style="color:rgba(241,240,234,.75)" id="pathNote"></div>
+        </div>
+        <div class="card">
+          <h3 data-t="weather"></h3>
+          <div class="wx" style="margin-top:8px">
+            <div><b id="wTemp">--</b><span data-t="temp"></span></div>
+            <div><b id="wHum">--</b><span data-t="hum"></span></div>
+            <div><b id="wFeels">--</b><span data-t="feels"></span></div>
+          </div>
+          <p class="small" id="wAdvice" style="margin:10px 0 0"></p>
+        </div>
+        <div>
+          <h3 data-t="myNeighbourhood"></h3>
+          <div class="stats" style="margin-top:8px">
+            <div class="stat"><b id="stMet">0</b><span data-t="stMet"></span></div>
+            <div class="stat"><b id="stQuests">0</b><span data-t="stQuests"></span></div>
+            <div class="stat"><b id="stHeard">0</b><span data-t="stHeard"></span></div>
+          </div>
+        </div>
+        <div class="card">
+          <h3 data-t="tilesTitle"></h3>
+          <p class="small" style="margin:4px 0 0" id="tilesNote"></p>
+        </div>
+        <details class="settings">
+          <summary data-t="connectSummary"></summary>
+          <p class="small" data-t="connectHelp"></p>
+          <div class="inline">
+            <input type="text" id="teamId" value="elmina-demo" aria-label="Team ID" spellcheck="false" autocomplete="off">
+            <button type="button" class="btn" id="connectBtn" data-t="connect"></button>
+          </div>
+          <p class="small" id="connState"></p>
+        </details>
+      </div>
+      <p class="foot" data-t="foot"></p>
+    </section>
+  </main>
+
+  <nav class="tabs" aria-label="Main">
+    <div class="inner">
+      <button type="button" data-tab="explore" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v14M15 6v14"/></svg><span data-t="tabExplore"></span></button>
+      <button type="button" data-tab="walk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="5" r="2"/><circle cx="17" cy="6" r="2"/><path d="M6 21l2-6 2 2v4M8 15l-1-5 3 1 2 3M15 21l1-5 2 1 1 4M16 16l-1-5 3 0"/></svg><span data-t="tabWalk"></span></button>
+      <button type="button" data-tab="share"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span data-t="tabShare"></span></button>
+      <button type="button" data-tab="tonight"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 1 1 9.5 4 6.5 6.5 0 0 0 20 14.5Z"/></svg><span data-t="tabTonight"></span></button>
+    </div>
+  </nav>
+  <div class="toast" id="toast" role="status" hidden></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var BROKER = "wss://broker.hivemq.com:8884/mqtt";
+
+  // ---------- content (sample content for the prototype) ----------
+  var POSTS = [
+    { id: 1, zone: "P2", x: 300, y: 92, mins: 2,
+      en: { t: "Before the township: the Elmina Estate", p: "Rainbow Bridge", by: "Township history", x: "Before the homes and the lake, this land was the Elmina Estate, an oil palm plantation. The township kept the name as a tribute. Stand on the bridge and picture the rows of palms that once stretched to the hills." },
+      bm: { t: "Sebelum perbandaran: Ladang Elmina", p: "Jambatan Pelangi", by: "Sejarah perbandaran", x: "Sebelum rumah dan tasik dibina, tanah ini ialah Ladang Elmina, sebuah ladang kelapa sawit. Nama Elmina dikekalkan sebagai penghormatan. Berdiri di atas jambatan dan bayangkan barisan pokok sawit yang dahulu terbentang hingga ke bukit." } },
+    { id: 2, zone: "P1", x: 96, y: 210, mins: 3,
+      en: { t: "Where we came from", p: "Community Park lawn", by: "Residents of Elmina", x: "Neighbours here come from Ipoh, Kota Bharu, Kuching, Chennai and Fuzhou. Each pin on this map is a family who moved in and left a note about home. Which one is closest to yours?" },
+      bm: { t: "Dari mana kita datang", p: "Padang Taman Komuniti", by: "Penduduk Elmina", x: "Jiran di sini datang dari Ipoh, Kota Bharu, Kuching, Chennai dan Fuzhou. Setiap pin pada peta ini ialah keluarga yang berpindah ke sini dan meninggalkan nota tentang kampung halaman. Yang mana paling dekat dengan anda?" } },
+    { id: 3, zone: "P3", x: 330, y: 300, mins: 2,
+      en: { t: "Recipes of Elmina", p: "Community Farm", by: "Auntie Rosnah, farm volunteer", x: "My ulam grows in plot 14. Every harvest day I make kerabu and share it with whoever is helping. Come on Saturday morning and I will show you which leaves to pick." },
+      bm: { t: "Resipi Elmina", p: "Kebun Komuniti", by: "Mak Cik Rosnah, sukarelawan kebun", x: "Ulam saya tumbuh di petak 14. Setiap hari tuai saya buat kerabu dan kongsi dengan sesiapa yang membantu. Datanglah pagi Sabtu, saya tunjukkan daun mana yang boleh dipetik." } },
+    { id: 4, zone: "P3", x: 246, y: 328, mins: 2,
+      en: { t: "Play for everyone", p: "Inclusive Playground", by: "A parent from Elmina West", x: "This was the first playground where my son, who uses a wheelchair, could play beside his cousins. The ramps and wide paths mean nobody waits at the side." },
+      bm: { t: "Bermain untuk semua", p: "Taman Permainan Inklusif", by: "Seorang ibu dari Elmina West", x: "Inilah taman permainan pertama di mana anak saya, yang menggunakan kerusi roda, boleh bermain bersama sepupunya. Tanjakan dan laluan yang luas bermakna tiada siapa perlu menunggu di tepi." } },
+    { id: 5, zone: "P4", x: 412, y: 150, mins: 2,
+      en: { t: "Seeds of the forest", p: "Native tree nursery", by: "Rainforest Knowledge Centre", x: "Native saplings grow here before they are planted across the township. Look for the young trees with name tags: one day they will shade these paths." },
+      bm: { t: "Benih hutan", p: "Tapak semaian pokok asli", by: "Pusat Pengetahuan Hutan Hujan", x: "Anak pokok asli ditanam di sini sebelum dipindahkan ke seluruh perbandaran. Cari pokok muda yang bertanda nama: suatu hari nanti ia akan meneduhkan laluan ini." } },
+    { id: 6, zone: "P4", x: 440, y: 62, mins: 1,
+      en: { t: "Night life of the forest edge", p: "Forest Park edge", by: "Jangkau team", x: "Why are the lights dimmer here? Fireflies, frogs and night birds need darkness. Near the forest the path lamps never go above 35%, so the forest can sleep." },
+      bm: { t: "Kehidupan malam di pinggir hutan", p: "Pinggir Taman Hutan", by: "Pasukan Jangkau", x: "Kenapa lampu di sini lebih malap? Kelip-kelip, katak dan burung malam memerlukan kegelapan. Berhampiran hutan, lampu laluan tidak melebihi 35%, supaya hutan boleh berehat." } },
+    { id: 7, zone: "P2", x: 206, y: 70, mins: 2,
+      en: { t: "Art in the park", p: "Art & Cultural Park", by: "Local artist (rotating)", x: "Each month a local artist or performer records a short piece here. This month: a story about the kite-makers who fly wau over the lawn at sunset." },
+      bm: { t: "Seni di taman", p: "Taman Seni & Budaya", by: "Artis tempatan (bergilir)", x: "Setiap bulan seorang artis atau penghibur tempatan merakam karya pendek di sini. Bulan ini: kisah pembuat wau yang menerbangkan wau di padang ketika matahari terbenam." } },
+    { id: 8, zone: "P1", x: 150, y: 302, mins: 1,
+      en: { t: "Your story here", p: "Community Park path", by: "Waiting for a new neighbour", x: "This spot is waiting for you. Moved in recently? Tell your neighbours one thing about where you come from, and it will live here." },
+      bm: { t: "Kisah anda di sini", p: "Laluan Taman Komuniti", by: "Menunggu jiran baharu", x: "Tempat ini menunggu anda. Baru berpindah? Ceritakan kepada jiran satu perkara tentang tempat asal anda, dan ia akan tinggal di sini." } }
+  ];
+  var ROUTE = [1, 7, 3];   // neighbour walk checkpoints
+
+  var T = {
+    en: {
+      exploreKicker: "Explore · Elmina Central Park", exploreTitle: "Every place has a <em>story.</em>",
+      exploreLead: "Tap a story post on the map, or scan the QR code on a post in the park.",
+      back: "← Back to map", startWalkHere: "Start a neighbour walk", addYours: "Add your own story",
+      scanned: "You scanned story post", listen: "min listen", heard: "neighbours heard this",
+      tabExplore: "Explore", tabWalk: "Walk", tabShare: "Share", tabTonight: "Tonight",
+      walkKicker: "Neighbour walk", walkTitle: "Walk with <em>someone new.</em>",
+      walkLead: "A 20-minute walk with one neighbour who also opted in this week. Three story posts. Finish at the farm.",
+      findPartner: "Find a walk partner", finding: "Finding a neighbour nearby…",
+      matchTitle: "We found a walk partner", accept: "Say hello and start", notNow: "Not now",
+      partnerLine: "Moved in 3 weeks ago · 400 m away · speaks English, 中文",
+      meetAt: "Meet at the Rainbow Bridge", safeNote: "First names only. Walks stay on public, well-lit paths.",
+      walking: "Walking with", here: "I’m here", arrived: "Arrived",
+      tilesLive: "Step tiles on this path sensed", steps: "steps",
+      doneTitle: "Quest complete!", doneLead: "You and Mei Ling unlocked a hidden story: “Recipes of Elmina”.",
+      glowOn: "The path near the farm is glowing gold for you.", glowSent: "Signal sent to the path lights.",
+      glowDemo: "Path glow shown here (path not connected in this demo).",
+      again: "Plan another walk", listenUnlocked: "Listen to the unlocked story",
+      shareKicker: "Share", shareTitle: "Tell your <em>neighbours.</em>",
+      shareLead: "Leave a short story at a place in the park. A community curator checks every story before it appears.",
+      fPlace: "Where should it live?", fTitle: "Title", fStory: "Your story",
+      fVoice: "In the pilot you can also record a voice note in English, Bahasa Malaysia, 中文 or தமிழ்.",
+      fWho: "Who can hear it?", cAll: "Everyone at this spot", cAllS: " · plays when anyone scans the post",
+      cNb: "Neighbours I walked with", cNbS: " · only people you did a quest with", cMe: "Only me", cMeS: " · a private memory",
+      fConsent: "I agree to share this story. I can change who hears it, or remove it, at any time.",
+      send: "Send for review", myStories: "My stories", noStories: "No stories yet. Your first one will appear here.",
+      review: "Waiting for curator", needTitle: "Please add a title and a few words of your story.", needConsent: "Please tick the consent box to share.",
+      sent: "Sent. The curator will review it within 2 days.",
+      tonightKicker: "Tonight", tonightTitle: "Your park, <em>right now.</em>",
+      pathLights: "Path lights · Community Park", weather: "Weather", temp: "Temp °C", hum: "Humidity %", feels: "Feels like °C",
+      myNeighbourhood: "My neighbourhood", stMet: "neighbours met", stQuests: "quests done", stHeard: "stories heard",
+      tilesTitle: "Walking home late?", connectSummary: "Connect to the live path (demo)",
+      connectHelp: "Enter the Team ID used in the Wokwi rig. Works when this page is opened from your laptop.",
+      connect: "Connect", connOn: "Live from the path", connOff: "Showing demo data",
+      foot: "Prototype for the Sime Darby Property University Hackathon 2026. Stories, names and figures are sample content.",
+      floodOn: "Flood alert: the pond is rising. Quests near the water are paused. Use the upper path.",
+      advComfort: "Comfortable for a walk.", advWarm: "Warm and humid. Bring water and pick shaded routes.", advHot: "Very hot. Walks are moved to the evening today.",
+      noteNIGHT: "Calm evening light. Lamps brighten ahead of you as the tiles sense your steps.",
+      noteAHEAD: "Someone is walking: the lamps ahead of them are bright.", noteQUEST: "Neighbours just finished a quest: the path is glowing gold.",
+      noteFLOOD: "Flood alert: the whole path is fully lit for safety.", noteDAY: "Daytime: path lights are off.",
+      mNIGHT: "Evening", mAHEAD: "Lights ahead", mQUEST: "Quest glow", mFLOOD: "Flood alert", mDAY: "Day"
+    },
+    bm: {
+      exploreKicker: "Teroka · Taman Pusat Elmina", exploreTitle: "Setiap tempat ada <em>kisahnya.</em>",
+      exploreLead: "Tekan tiang cerita pada peta, atau imbas kod QR pada tiang di taman.",
+      back: "← Kembali ke peta", startWalkHere: "Mula jalan bersama jiran", addYours: "Tambah kisah anda",
+      scanned: "Anda mengimbas tiang cerita", listen: "minit", heard: "jiran telah mendengar",
+      tabExplore: "Teroka", tabWalk: "Jalan", tabShare: "Kongsi", tabTonight: "Malam ini",
+      walkKicker: "Jalan bersama jiran", walkTitle: "Berjalan dengan <em>kenalan baharu.</em>",
+      walkLead: "Jalan 20 minit dengan seorang jiran yang turut menyertai minggu ini. Tiga tiang cerita. Tamat di kebun.",
+      findPartner: "Cari rakan berjalan", finding: "Mencari jiran berdekatan…",
+      matchTitle: "Kami jumpa rakan berjalan", accept: "Tegur dan mula", notNow: "Bukan sekarang",
+      partnerLine: "Berpindah 3 minggu lalu · 400 m dari sini · bertutur English, 中文",
+      meetAt: "Berjumpa di Jambatan Pelangi", safeNote: "Nama pertama sahaja. Laluan sentiasa di kawasan awam yang terang.",
+      walking: "Berjalan dengan", here: "Saya di sini", arrived: "Sampai",
+      tilesLive: "Jubin langkah di laluan ini mengesan", steps: "langkah",
+      doneTitle: "Misi selesai!", doneLead: "Anda dan Mei Ling membuka kisah tersembunyi: “Resipi Elmina”.",
+      glowOn: "Laluan berhampiran kebun bercahaya keemasan untuk anda.", glowSent: "Isyarat dihantar ke lampu laluan.",
+      glowDemo: "Cahaya laluan dipaparkan di sini (laluan tidak disambung dalam demo ini).",
+      again: "Rancang jalan lain", listenUnlocked: "Dengar kisah yang dibuka",
+      shareKicker: "Kongsi", shareTitle: "Ceritakan kepada <em>jiran.</em>",
+      shareLead: "Tinggalkan kisah pendek di satu tempat di taman. Kurator komuniti menyemak setiap kisah sebelum dipaparkan.",
+      fPlace: "Di mana kisah ini?", fTitle: "Tajuk", fStory: "Kisah anda",
+      fVoice: "Dalam projek rintis, anda juga boleh merakam nota suara dalam English, Bahasa Malaysia, 中文 atau தமிழ்.",
+      fWho: "Siapa boleh dengar?", cAll: "Semua orang di tempat ini", cAllS: " · dimainkan apabila sesiapa mengimbas tiang",
+      cNb: "Jiran yang berjalan dengan saya", cNbS: " · hanya mereka yang menyertai misi bersama anda", cMe: "Saya sahaja", cMeS: " · kenangan peribadi",
+      fConsent: "Saya bersetuju berkongsi kisah ini. Saya boleh tukar siapa yang mendengar, atau padamnya, bila-bila masa.",
+      send: "Hantar untuk semakan", myStories: "Kisah saya", noStories: "Belum ada kisah. Kisah pertama anda akan dipaparkan di sini.",
+      review: "Menunggu kurator", needTitle: "Sila tambah tajuk dan beberapa perkataan kisah anda.", needConsent: "Sila tanda kotak persetujuan untuk berkongsi.",
+      sent: "Dihantar. Kurator akan menyemaknya dalam 2 hari.",
+      tonightKicker: "Malam ini", tonightTitle: "Taman anda, <em>sekarang.</em>",
+      pathLights: "Lampu laluan · Taman Komuniti", weather: "Cuaca", temp: "Suhu °C", hum: "Kelembapan %", feels: "Terasa °C",
+      myNeighbourhood: "Kejiranan saya", stMet: "jiran dikenali", stQuests: "misi selesai", stHeard: "kisah didengar",
+      tilesTitle: "Pulang lewat malam?", connectSummary: "Sambung ke laluan langsung (demo)",
+      connectHelp: "Masukkan Team ID yang digunakan dalam rig Wokwi. Berfungsi apabila halaman ini dibuka dari komputer riba anda.",
+      connect: "Sambung", connOn: "Langsung dari laluan", connOff: "Memaparkan data demo",
+      foot: "Prototaip untuk Sime Darby Property University Hackathon 2026. Kisah, nama dan angka ialah kandungan contoh.",
+      floodOn: "Amaran banjir: paras kolam meningkat. Misi berhampiran air ditangguhkan. Gunakan laluan atas.",
+      advComfort: "Selesa untuk berjalan.", advWarm: "Panas dan lembap. Bawa air dan pilih laluan berteduh.", advHot: "Sangat panas. Jalan dipindahkan ke waktu petang hari ini.",
+      noteNIGHT: "Cahaya petang yang tenang. Lampu menyala di hadapan anda apabila jubin mengesan langkah anda.",
+      noteAHEAD: "Ada yang sedang berjalan: lampu di hadapan mereka terang.", noteQUEST: "Jiran baru menamatkan misi: laluan bercahaya keemasan.",
+      noteFLOOD: "Amaran banjir: seluruh laluan diterangi sepenuhnya.", noteDAY: "Siang: lampu laluan dipadam.",
+      mNIGHT: "Petang", mAHEAD: "Lampu di hadapan", mQUEST: "Cahaya misi", mFLOOD: "Amaran banjir", mDAY: "Siang"
+    }
+  };
+
+  // ---------- state ----------
+  var lang = "en";
+  var store = { heard: [], met: 0, quests: 0, stories: [] };
+  try { var saved = JSON.parse(localStorage.getItem("jangkau") || "null"); if (saved) store = Object.assign(store, saved); } catch (e) {}
+  function persist() { try { localStorage.setItem("jangkau", JSON.stringify(store)); } catch (e) {} }
+  try { var l = localStorage.getItem("jangkau-lang"); if (l === "bm" || l === "en") lang = l; } catch (e) {}
+
+  var walk = { stage: "intro", done: [] };
+  var current = null;
+  var live = { connected: false, status: null };
+  var client = null;
+
+  function t(k) { return (T[lang] && T[lang][k]) || T.en[k] || k; }
+  function post(id) { for (var i = 0; i < POSTS.length; i++) if (POSTS[i].id === id) return POSTS[i]; return null; }
+  function txt(p) { return p[lang] || p.en; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+  function toast(msg) {
+    var el = $("toast"); el.textContent = msg; el.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, 2600);
+  }
+
+  // ---------- i18n ----------
+  function applyLang() {
+    document.documentElement.lang = lang === "bm" ? "ms" : "en";
+    $("langEN").setAttribute("aria-pressed", lang === "en");
+    $("langBM").setAttribute("aria-pressed", lang === "bm");
+    var nodes = document.querySelectorAll("[data-t]");
+    for (var i = 0; i < nodes.length; i++) nodes[i].innerHTML = t(nodes[i].getAttribute("data-t"));
+    renderMap(); renderList(); renderPlaces(); renderMyStories(); renderWalk();
+    if (current) openStory(current, true);
+    renderTonight();
+  }
+
+  // ---------- map ----------
+  function renderMap() {
+    var pins = POSTS.map(function (p) {
+      var done = store.heard.indexOf(p.id) >= 0;
+      return '<g class="pin' + (done ? " done" : "") + '" tabindex="0" role="button" data-id="' + p.id + '" aria-label="' + esc(txt(p).t) + '">' +
+        '<circle cx="' + p.x + '" cy="' + p.y + '" r="15"/><text x="' + p.x + '" y="' + (p.y + 5) + '" text-anchor="middle">' + p.id + "</text></g>";
+    }).join("");
+    $("map").innerHTML =
+      '<svg viewBox="0 0 480 380" role="img" aria-label="Map of Elmina Central Park story posts">' +
+      '<rect width="480" height="380" fill="#dfe8d8"/>' +
+      '<rect x="370" y="0" width="110" height="200" fill="#bcd3b5"/>' +
+      '<circle cx="395" cy="25" r="22" fill="#a9c7a1"/><circle cx="440" cy="30" r="26" fill="#a9c7a1"/><circle cx="465" cy="90" r="22" fill="#a9c7a1"/><circle cx="420" cy="105" r="18" fill="#a9c7a1"/>' +
+      '<ellipse cx="250" cy="185" rx="120" ry="62" fill="#9cc6d6"/><ellipse cx="218" cy="175" rx="40" ry="18" fill="#b6d8e4"/>' +
+      '<rect x="280" y="262" width="110" height="78" rx="8" fill="#e8dcc0"/>' +
+      '<path d="M40 330 C120 300 140 250 120 200 C100 140 170 100 230 90 C300 80 350 110 420 70" fill="none" stroke="#f6f2e6" stroke-width="12" stroke-linecap="round"/>' +
+      '<path d="M120 300 C200 330 260 340 340 300" fill="none" stroke="#f6f2e6" stroke-width="10" stroke-linecap="round"/>' +
+      '<path d="M300 92 L300 92" stroke="#c2412d" stroke-width="10"/>' +
+      '<rect x="285" y="83" width="34" height="8" rx="3" fill="#e5533d" opacity=".9"/>' +
+      '<text class="zone" x="40" y="250">P1 COMMUNITY PARK</text>' +
+      '<text class="zone" x="150" y="40">P2 ART &amp; CULTURE</text>' +
+      '<text class="zone" x="282" y="362">P3 PLAY + FARM</text>' +
+      '<text class="zone" x="380" y="190">P4 FOREST</text>' +
+      '<text class="zone" x="212" y="196" style="fill:#3e6f86">LAKE</text>' +
+      pins + "</svg>";
+    var gs = $("map").querySelectorAll(".pin");
+    for (var i = 0; i < gs.length; i++) {
+      gs[i].addEventListener("click", onPin);
+      gs[i].addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onPin.call(this); } });
+    }
+  }
+  function onPin() { openStory(+this.getAttribute("data-id")); }
+
+  function renderList() {
+    $("storyList").innerHTML = POSTS.map(function (p) {
+      var c = txt(p), done = store.heard.indexOf(p.id) >= 0;
+      return '<button type="button" class="story-item" data-id="' + p.id + '"><span class="num' + (done ? " done" : "") + '">' + p.id + '</span><div><div class="t">' + esc(c.t) + '</div><div class="s">' + esc(c.p) + " · " + p.zone + " · " + p.mins + " " + t("listen") + "</div></div></button>";
+    }).join("");
+    var bs = $("storyList").querySelectorAll(".story-item");
+    for (var i = 0; i < bs.length; i++) bs[i].addEventListener("click", function () { openStory(+this.getAttribute("data-id")); });
+  }
+
+  // ---------- story ----------
+  var playing = false, playTimer = null;
+  function openStory(id, keep) {
+    var p = post(id); if (!p) return;
+    current = id;
+    var c = txt(p);
+    $("sPlace").textContent = c.p + " · " + p.zone;
+    $("sTitle").textContent = c.t;
+    $("sBy").textContent = c.by;
+    $("sLen").textContent = p.mins + " " + t("listen");
+    $("sText").textContent = c.x;
+    var heardCount = 12 + id * 7;
+    $("sMeta").innerHTML = '<span class="chip">' + heardCount + " " + t("heard") + '</span><span class="chip g">EN · BM · 中文 · தமிழ்</span>';
+    if (!keep) { stopPlay(); drawWave(0); }
+    show("story", true);
+    if (!keep) window.scrollTo(0, 0);
+  }
+  function drawWave(progress) {
+    var n = 44, html = "";
+    for (var i = 0; i < n; i++) {
+      var h = 20 + Math.round(70 * Math.abs(Math.sin(i * 1.7 + current)) * (0.5 + 0.5 * Math.abs(Math.cos(i * 0.6))));
+      html += '<i style="height:' + h + '%" class="' + (i / n < progress ? "on" : "") + '"></i>';
+    }
+    $("wave").innerHTML = html;
+  }
+  function stopPlay() {
+    playing = false; clearInterval(playTimer);
+    $("playBtn").innerHTML = "&#9654;"; $("playBtn").setAttribute("aria-label", "Play story");
+    try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch (e) {}
+  }
+  $("playBtn").addEventListener("click", function () {
+    if (playing) { stopPlay(); return; }
+    var p = post(current); if (!p) return;
+    playing = true;
+    $("playBtn").innerHTML = "&#10074;&#10074;"; $("playBtn").setAttribute("aria-label", "Pause story");
+    try {
+      if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+        var u = new SpeechSynthesisUtterance(txt(p).t + ". " + txt(p).x);
+        u.lang = lang === "bm" ? "ms-MY" : "en-GB"; u.rate = 0.95;
+        u.onend = function () { if (playing) finishPlay(); };
+        window.speechSynthesis.speak(u);
+      }
+    } catch (e) {}
+    var start = Date.now(), dur = 12000;
+    playTimer = setInterval(function () {
+      var pr = Math.min(1, (Date.now() - start) / dur);
+      drawWave(pr);
+      if (pr >= 1) finishPlay();
+    }, 250);
+  });
+  function finishPlay() {
+    stopPlay(); drawWave(1);
+    if (store.heard.indexOf(current) < 0) { store.heard.push(current); persist(); renderMap(); renderList(); renderTonight(); }
+  }
+  $("backBtn").addEventListener("click", function () { stopPlay(); current = null; $("scanBanner").hidden = true; show("explore"); });
+  $("sWalk").addEventListener("click", function () { stopPlay(); current = null; show("walk"); });
+  $("sReply").addEventListener("click", function () { var id = current; stopPlay(); current = null; show("share"); $("fPlace").value = String(id); });
+
+  // ---------- walk ----------
+  function renderWalk() {
+    var v = $("v-walk"), h = "";
+    if (walk.stage === "intro" || walk.stage === "finding") {
+      h += '<div class="kicker">' + t("walkKicker") + "</div><h2>" + t("walkTitle") + '</h2><p class="lead">' + t("walkLead") + "</p>";
+      h += '<ol class="checks">' + ROUTE.map(function (id, i) { var c = txt(post(id)); return '<li><span class="num">' + (i + 1) + '</span><div><b>' + esc(c.p) + '</b><div class="small">' + esc(c.t) + "</div></div></li>"; }).join("") + "</ol>";
+      h += '<div style="margin-top:14px">' + (walk.stage === "finding"
+        ? '<div class="card amber" role="status">' + t("finding") + "</div>"
+        : '<button type="button" class="btn primary block" id="findBtn">' + t("findPartner") + "</button>") + "</div>";
+    } else if (walk.stage === "match") {
+      h += '<div class="kicker">' + t("walkKicker") + "</div><h2>" + t("matchTitle") + "</h2>";
+      h += '<div class="card" style="margin-top:12px"><div class="partner"><div class="avatar">ML</div><div><h3>Mei Ling</h3><div class="small">' + t("partnerLine") + '</div></div></div>' +
+           '<div class="card amber" style="margin-top:12px;padding:10px 12px"><b>' + t("meetAt") + '</b><div class="small" style="color:inherit">' + t("safeNote") + "</div></div></div>";
+      h += '<div class="btnrow" style="margin-top:14px"><button type="button" class="btn" id="noBtn">' + t("notNow") + '</button><button type="button" class="btn primary" id="yesBtn">' + t("accept") + "</button></div>";
+    } else if (walk.stage === "walking") {
+      var n = walk.done.length;
+      h += '<div class="kicker">' + t("walking") + " Mei Ling</div><h2>" + esc(txt(post(ROUTE[Math.min(n, 2)])).p) + "</h2>";
+      h += '<div class="progress"><i style="width:' + Math.round(n / ROUTE.length * 100) + '%"></i></div><div class="small" style="margin-bottom:12px">' + n + " / " + ROUTE.length + "</div>";
+      h += '<ol class="checks">' + ROUTE.map(function (id, i) {
+        var c = txt(post(id)), done = walk.done.indexOf(id) >= 0, next = i === n;
+        return '<li class="' + (done ? "done" : "") + '"><span class="num">' + (i + 1) + '</span><div><b>' + esc(c.p) + '</b><div class="small">' + esc(c.t) + "</div></div>" +
+          (done ? '<span class="small">✓ ' + t("arrived") + "</span>" : (next ? '<button type="button" class="btn gold" data-here="' + id + '">' + t("here") + "</button>" : "")) + "</li>";
+      }).join("") + "</ol>";
+      var steps = live.status && typeof live.status.steps === "number" ? live.status.steps : 140 + n * 230;
+      h += '<p class="small" style="margin-top:12px">' + t("tilesLive") + " <b>" + steps + "</b> " + t("steps") + ".</p>";
+    } else if (walk.stage === "done") {
+      h += '<div class="celebrate"><div class="kicker" style="color:var(--amber)">' + t("walkKicker") + "</div><h2>" + t("doneTitle") + '</h2><div class="glowpath on" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>' +
+           "<p>" + t("doneLead") + '</p><p class="small" style="color:rgba(241,240,234,.8)">' + t("glowOn") + " " + (walk.sent ? t("glowSent") : t("glowDemo")) + "</p></div>";
+      h += '<div class="stack" style="margin-top:12px"><button type="button" class="btn primary block" id="unlockBtn">' + t("listenUnlocked") + '</button><button type="button" class="btn block" id="againBtn">' + t("again") + "</button></div>";
+    }
+    v.innerHTML = h;
+    var b;
+    if ((b = $("findBtn"))) b.addEventListener("click", function () { walk.stage = "finding"; renderWalk(); setTimeout(function () { walk.stage = "match"; renderWalk(); }, 1400); });
+    if ((b = $("noBtn"))) b.addEventListener("click", function () { walk.stage = "intro"; renderWalk(); });
+    if ((b = $("yesBtn"))) b.addEventListener("click", function () { walk.stage = "walking"; walk.done = []; store.met += 1; persist(); renderWalk(); renderTonight(); });
+    var hs = v.querySelectorAll("[data-here]");
+    for (var i = 0; i < hs.length; i++) hs[i].addEventListener("click", function () {
+      var id = +this.getAttribute("data-here");
+      walk.done.push(id);
+      if (store.heard.indexOf(id) < 0) store.heard.push(id);
+      if (walk.done.length >= ROUTE.length) completeQuest(); else { persist(); renderWalk(); }
+    });
+    if ((b = $("unlockBtn"))) b.addEventListener("click", function () { openStory(3); });
+    if ((b = $("againBtn"))) b.addEventListener("click", function () { walk = { stage: "intro", done: [] }; renderWalk(); });
+  }
+  function completeQuest() {
+    store.quests += 1; persist();
+    walk.sent = false;
+    if (client && client.connected) {
+      try { client.publish(base() + "/cmd", JSON.stringify({ cmd: "quest", from: "resident-app" })); walk.sent = true; } catch (e) {}
+    }
+    walk.stage = "done"; renderWalk(); renderMap(); renderList(); renderTonight();
+    window.scrollTo(0, 0);
+  }
+
+  // ---------- share ----------
+  function renderPlaces() {
+    var cur = $("fPlace").value;
+    $("fPlace").innerHTML = POSTS.map(function (p) { return '<option value="' + p.id + '">' + p.id + " · " + esc(txt(p).p) + "</option>"; }).join("");
+    if (cur) $("fPlace").value = cur; else $("fPlace").value = "8";
+  }
+  function renderMyStories() {
+    var ul = $("myStories");
+    if (!store.stories.length) { ul.innerHTML = '<li><span class="small">' + t("noStories") + "</span></li>"; return; }
+    ul.innerHTML = store.stories.slice().reverse().map(function (s) {
+      return '<li><div><b>' + esc(s.title) + '</b><div class="small">' + esc(txt(post(s.place)).p) + "</div></div><span class=\"status\">" + t("review") + "</span></li>";
+    }).join("");
+  }
+  $("shareForm").addEventListener("submit", function (e) {
+    e.preventDefault();
+    var title = $("fTitle").value.trim(), body = $("fStory").value.trim();
+    if (!title || body.length < 10) { $("formMsg").textContent = t("needTitle"); return; }
+    if (!$("fConsent").checked) { $("formMsg").textContent = t("needConsent"); return; }
+    $("formMsg").textContent = "";
+    var who = (document.querySelector('input[name="consent"]:checked') || {}).value || "all";
+    store.stories.push({ title: title, body: body, place: +$("fPlace").value, who: who, at: Date.now() });
+    persist(); renderMyStories();
+    $("fTitle").value = ""; $("fStory").value = ""; $("fConsent").checked = false;
+    toast(t("sent"));
+  });
+
+  // ---------- tonight ----------
+  var demo = { mode: "NIGHT", levels: [], tempC: 29.4, humidity: 78, feelsC: 33.6, flood: false, steps: 1240, t: 0 };
+  for (var k = 0; k < 12; k++) demo.levels.push(20);
+  function demoTick() {
+    demo.t++;
+    var phase = demo.t % 16;
+    demo.mode = phase < 6 ? "AHEAD" : (phase === 10 || phase === 11 ? "QUEST" : "NIGHT");
+    for (var i = 0; i < 12; i++) {
+      var lvl = 20;
+      if (demo.mode === "AHEAD") lvl = (i >= phase && i <= phase + 5) ? 100 : 20;
+      if (demo.mode === "QUEST") lvl = 80;
+      if (i >= 9) lvl = Math.min(lvl, 35);
+      demo.levels[i] = lvl;
+    }
+    if (demo.mode === "AHEAD") demo.steps += 3;
+    demo.tempC = Math.min(32, Math.max(27, demo.tempC + (Math.random() - 0.5) * 0.15));
+    renderTonight();
+  }
+  function renderTonight() {
+    var s = live.connected && live.status ? live.status : demo;
+    var mode = s.mode || "NIGHT";
+    $("modeChip").textContent = t("m" + mode);
+    var lv = s.levels || [];
+    var html = "";
+    for (var i = 0; i < 12; i++) {
+      var v = (lv[i] == null ? 0 : lv[i]) / 100;
+      var col = mode === "QUEST" ? "255,170,0" : (i >= 9 ? "255,120,40" : "255,200,110");
+      if (mode === "FLOOD" && i < 2) col = "230,60,30";
+      html += '<i style="background:rgba(' + col + "," + (0.18 + 0.82 * v).toFixed(2) + ");box-shadow:0 0 " + Math.round(12 * v) + "px rgba(" + col + "," + (0.6 * v).toFixed(2) + ')"></i>';
+    }
+    $("lampRow").innerHTML = html;
+    $("pathNote").textContent = t("note" + mode);
+    var temp = s.tempC, hum = s.humidity, feels = s.feelsC;
+    $("wTemp").textContent = typeof temp === "number" ? temp.toFixed(1) : "--";
+    $("wHum").textContent = typeof hum === "number" ? Math.round(hum) : "--";
+    $("wFeels").textContent = typeof feels === "number" ? feels.toFixed(1) : "--";
+    $("wAdvice").textContent = typeof feels !== "number" ? "" : feels >= 41 ? t("advHot") : feels >= 33 ? t("advWarm") : t("advComfort");
+    $("floodCard").hidden = !s.flood;
+    $("floodCard").textContent = t("floodOn");
+    var steps = typeof s.steps === "number" ? s.steps : 0;
+    $("tilesNote").innerHTML = (lang === "bm"
+      ? "Jubin langkah di laluan ini mengesan <b>" + steps + "</b> langkah malam ini. Apabila anda berjalan, lampu di hadapan menjadi terang dan malap semula selepas anda lalu. Jubin hanya mengesan tekanan, tiada kamera."
+      : "Step tiles on this path sensed <b>" + steps + "</b> steps tonight. As you walk, the lamps ahead of you brighten, then dim after you pass. Tiles sense pressure only, never faces.");
+    $("stMet").textContent = store.met;
+    $("stQuests").textContent = store.quests;
+    $("stHeard").textContent = store.heard.length;
+    $("rigDot").className = "dot" + (live.connected && live.status ? " live" : "");
+    $("connState").textContent = live.connected && live.status ? t("connOn") : t("connOff");
+  }
+
+  // ---------- live path (MQTT) ----------
+  function base() { return "jangkau/" + ($("teamId").value.trim() || "elmina-demo") + "/zone/P1"; }
+  function connect() {
+    try { localStorage.setItem("jangkau-team", $("teamId").value.trim()); } catch (e) {}
+    if (client) { try { client.end(true); } catch (e) {} client = null; }
+    live.connected = false; live.status = null; renderTonight();
+    if (typeof mqtt === "undefined") return;
+    try {
+      client = mqtt.connect(BROKER, { clientId: "jk-app-" + Math.random().toString(16).slice(2, 10), reconnectPeriod: 5000, connectTimeout: 8000 });
+      client.on("connect", function () { live.connected = true; client.subscribe(base() + "/status"); });
+      client.on("message", function (topic, payload) {
+        try { live.status = JSON.parse(payload.toString()); live.lastAt = Date.now(); renderTonight(); if (walk.stage === "walking") renderWalk(); } catch (e) {}
+      });
+      client.on("close", function () { live.connected = false; renderTonight(); });
+      client.on("error", function () {});
+    } catch (e) { client = null; }
+  }
+  try { var tid = localStorage.getItem("jangkau-team"); if (tid) $("teamId").value = tid; } catch (e) {}
+  $("connectBtn").addEventListener("click", connect);
+  setInterval(function () {
+    if (live.status && Date.now() - (live.lastAt || 0) > 8000) { live.status = null; renderTonight(); }
+    if (!(live.connected && live.status)) demoTick();
+  }, 1000);
+
+  // ---------- navigation ----------
+  var views = ["explore", "story", "walk", "share", "tonight"];
+  function show(name, sub) {
+    views.forEach(function (v) { $("v-" + v).hidden = v !== name; });
+    var tab = name === "story" ? "explore" : name;
+    var bs = document.querySelectorAll("nav.tabs button");
+    for (var i = 0; i < bs.length; i++) {
+      if (bs[i].getAttribute("data-tab") === tab) bs[i].setAttribute("aria-current", "page"); else bs[i].removeAttribute("aria-current");
+    }
+    if (!sub) window.scrollTo(0, 0);
+  }
+  var tabs = document.querySelectorAll("nav.tabs button");
+  for (var i = 0; i < tabs.length; i++) tabs[i].addEventListener("click", function () { stopPlay(); current = null; show(this.getAttribute("data-tab")); });
+  $("langEN").addEventListener("click", function () { lang = "en"; try { localStorage.setItem("jangkau-lang", lang); } catch (e) {} applyLang(); });
+  $("langBM").addEventListener("click", function () { lang = "bm"; try { localStorage.setItem("jangkau-lang", lang); } catch (e) {} applyLang(); });
+
+  // ---------- start: QR codes open #post1 … #post8 ----------
+  applyLang();
+  var m = /^#post([1-8])$/.exec(location.hash || "");
+  if (m) {
+    var id = +m[1];
+    $("scanBanner").hidden = false;
+    $("scanBanner").textContent = t("scanned") + " " + id;
+    openStory(id);
+  } else {
+    var tabHash = (location.hash || "").slice(1);
+    if (["walk", "share", "tonight"].indexOf(tabHash) >= 0) show(tabHash); else show("explore");
+  }
+  connect();
+})();
+</script>

@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "author": "The Null Pointers (UNIMAS) - Jangkau",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-neopixel-matrix", "id": "path", "top": -130, "left": 160, "attrs": { "rows": "1", "cols": "12" } },
+    { "type": "wokwi-lcd1602", "id": "lcd", "top": 150, "left": 200, "attrs": { "pins": "i2c" } },
+
+    { "type": "wokwi-hx711", "id": "tileA", "top": -250, "left": -330, "attrs": { "type": "50kg" } },
+    { "type": "wokwi-hx711", "id": "tileB", "top": -110, "left": -330, "attrs": { "type": "50kg" } },
+    { "type": "wokwi-hx711", "id": "tileC", "top": 30, "left": -330, "attrs": { "type": "50kg" } },
+
+    { "type": "wokwi-led", "id": "glowA", "top": -260, "left": -40, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-led", "id": "glowB", "top": -260, "left": 10, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-led", "id": "glowC", "top": -260, "left": 60, "attrs": { "color": "yellow" } },
+    { "type": "wokwi-resistor", "id": "rA", "top": -170, "left": -55, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rB", "top": -170, "left": -5, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "rC", "top": -170, "left": 45, "rotate": 90, "attrs": { "value": "220" } },
+
+    { "type": "wokwi-slide-switch", "id": "night", "top": 200, "left": -160, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "quest", "top": 270, "left": -170, "attrs": { "color": "green" } },
+
+    { "type": "wokwi-potentiometer", "id": "water", "top": 170, "left": -330, "attrs": {} },
+    { "type": "wokwi-dht22", "id": "weather", "top": 300, "left": -330, "attrs": { "temperature": "29", "humidity": "78" } },
+    { "type": "wokwi-buzzer", "id": "buzzer", "top": 330, "left": 30, "attrs": { "volume": "0.2" } },
+    { "type": "wokwi-led", "id": "alert", "top": 320, "left": 130, "attrs": { "color": "red" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": 410, "left": 120, "rotate": 90, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+
+    [ "path:VCC", "esp:5V", "red", [] ],
+    [ "path:GND", "esp:GND.1", "black", [] ],
+    [ "path:DIN", "esp:13", "green", [] ],
+
+    [ "lcd:VCC", "esp:5V", "red", [] ],
+    [ "lcd:GND", "esp:GND.2", "black", [] ],
+    [ "lcd:SDA", "esp:21", "blue", [] ],
+    [ "lcd:SCL", "esp:22", "gold", [] ],
+
+    [ "tileA:VCC", "esp:5V", "red", [] ],
+    [ "tileA:GND", "esp:GND.1", "black", [] ],
+    [ "tileA:DT", "esp:32", "cyan", [] ],
+    [ "tileA:SCK", "esp:33", "violet", [] ],
+
+    [ "tileB:VCC", "esp:5V", "red", [] ],
+    [ "tileB:GND", "esp:GND.1", "black", [] ],
+    [ "tileB:DT", "esp:25", "cyan", [] ],
+    [ "tileB:SCK", "esp:26", "violet", [] ],
+
+    [ "tileC:VCC", "esp:5V", "red", [] ],
+    [ "tileC:GND", "esp:GND.1", "black", [] ],
+    [ "tileC:DT", "esp:16", "cyan", [] ],
+    [ "tileC:SCK", "esp:17", "violet", [] ],
+
+    [ "glowA:A", "esp:19", "orange", [] ],
+    [ "glowA:C", "rA:1", "black", [] ],
+    [ "rA:2", "esp:GND.2", "black", [] ],
+    [ "glowB:A", "esp:23", "orange", [] ],
+    [ "glowB:C", "rB:1", "black", [] ],
+    [ "rB:2", "esp:GND.2", "black", [] ],
+    [ "glowC:A", "esp:4", "orange", [] ],
+    [ "glowC:C", "rC:1", "black", [] ],
+    [ "rC:2", "esp:GND.2", "black", [] ],
+
+    [ "night:1", "esp:GND.1", "black", [] ],
+    [ "night:2", "esp:27", "violet", [] ],
+    [ "night:3", "esp:3V3", "red", [] ],
+
+    [ "quest:1.l", "esp:14", "green", [] ],
+    [ "quest:2.l", "esp:GND.1", "black", [] ],
+
+    [ "water:VCC", "esp:3V3", "red", [] ],
+    [ "water:GND", "esp:GND.1", "black", [] ],
+    [ "water:SIG", "esp:34", "cyan", [] ],
+
+    [ "weather:VCC", "esp:3V3", "red", [] ],
+    [ "weather:GND", "esp:GND.1", "black", [] ],
+    [ "weather:SDA", "esp:15", "green", [] ],
+
+    [ "buzzer:1", "esp:GND.2", "black", [] ],
+    [ "buzzer:2", "esp:18", "orange", [] ],
+
+    [ "alert:A", "esp:5", "red", [] ],
+    [ "alert:C", "r1:1", "black", [] ],
+    [ "r1:2", "esp:GND.2", "black", [] ]
+  ],
+  "dependencies": {}
+}

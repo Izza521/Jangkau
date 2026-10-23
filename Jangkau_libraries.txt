@@ -1,0 +1,6 @@
+# Wokwi Library Manager
+Adafruit NeoPixel
+PubSubClient
+LiquidCrystal I2C
+HX711
+DHT sensor library for ESPx

@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Jangkau Park Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,600;1,6..96,500&family=Oswald:wght@500;600&family=Work+Sans:wght@400;500;600&display=swap">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+/* Layout: dark park-night header band, control strip, KPI row, path + chart, weather + activity. Follows the proposal's dashboard mockup. */
+:root {
+  --bg: #f1eee6;
+  --surface: #fbfaf6;
+  --line: #ddd7c8;
+  --fg: #1d2420;
+  --muted: #6a6f66;
+  --night: #131b17;
+  --night-fg: #f1eee6;
+  --amber: #e9962f;
+  --amber-soft: #f6dcb3;
+  --amber-ink: #8a4f06;
+  --forest: #1f4d3a;
+  --forest-soft: #d5e4da;
+  --danger: #c4361d;
+  --danger-soft: #f7d9d1;
+  --lamp-off: #d8d2c3;
+  --tile: #e7e1d3;
+  --font-display: "Bodoni Moda", Georgia, "Times New Roman", serif;
+  --font-num: "Oswald", "Arial Narrow", Impact, sans-serif;
+  --font-body: "Work Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1512; --surface: #18201c; --line: #2b3530; --fg: #ece7da; --muted: #9aa198;
+    --night: #070b09; --night-fg: #ece7da; --amber-soft: #4a3518; --amber-ink: #e9962f; --forest: #7fbf9c; --forest-soft: #1f3529;
+    --danger: #ff7a5c; --danger-soft: #45201a; --lamp-off: #2c3430; --tile: #222b26; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1512; --surface: #18201c; --line: #2b3530; --fg: #ece7da; --muted: #9aa198;
+  --night: #070b09; --night-fg: #ece7da; --amber-soft: #4a3518; --amber-ink: #e9962f; --forest: #7fbf9c; --forest-soft: #1f3529;
+  --danger: #ff7a5c; --danger-soft: #45201a; --lamp-off: #2c3430; --tile: #222b26; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--font-body); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+header { background: var(--night); color: var(--night-fg); }
+header .wrap { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-block: 18px; }
+h1 { margin: 0; font: 600 clamp(22px, 3.4vw, 30px)/1.1 var(--font-display); text-wrap: balance; }
+h1 em { font-weight: 500; color: var(--amber); }
+.zone { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .75; margin-top: 4px; }
+.pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,.08); }
+.pill i { width: 8px; height: 8px; border-radius: 50%; background: #8a8f86; }
+.pill.live i { background: #5fd38a; box-shadow: 0 0 0 4px rgba(95,211,138,.2); }
+.pill.wait i { background: var(--amber); }
+.pill.demo i { background: #8fb7ff; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; padding-block: 16px; border-bottom: 1px solid var(--line); }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label, .field .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--fg); width: 190px; max-width: 100%; }
+button { font: 600 14px var(--font-body); padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+button.primary { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+button.quest { background: var(--amber); color: #1d1408; border-color: var(--amber); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; background: transparent; }
+.seg button[aria-pressed=true] { background: var(--forest); color: var(--bg); }
+.spacer { flex: 1 1 auto; }
+
+.banner { margin-top: 16px; padding: 12px 16px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); font-weight: 600; border: 1px solid var(--danger); }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 16px; }
+.kpi { background: var(--surface); padding: 16px 18px; min-width: 0; }
+.kpi .label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.kpi .num { font: 600 44px/1.05 var(--font-num); font-variant-numeric: tabular-nums; margin-top: 6px; }
+.kpi .num small { font-size: 22px; }
+.kpi .sub { font-size: 13px; color: var(--muted); }
+.kpi.good .num { color: var(--forest); }
+.kpi.harvest .num { color: var(--amber-ink); }
+
+.grid2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.panel h2 { margin: 0 0 12px; font: 600 15px var(--font-body); display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 999px; background: var(--forest-soft); color: var(--forest); }
+.chip.QUEST, .chip.AHEAD { background: var(--amber-soft); color: var(--amber-ink); }
+.chip.FLOOD { background: var(--danger-soft); color: var(--danger); }
+.chip.DAY { background: var(--line); color: var(--muted); }
+
+.path { position: relative; padding-top: 12px; }
+.path::before { content: ""; position: absolute; left: 0; right: 0; top: 24px; height: 14px; border-radius: 7px; background: var(--line); }
+.row12 { position: relative; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; }
+.lamp { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bulb { width: 26px; height: 26px; max-width: 100%; aspect-ratio: 1; border-radius: 50%; background: var(--lamp-off); transition: background .5s, box-shadow .5s; }
+.lamp span { font: 500 11px var(--font-num); color: var(--muted); font-variant-numeric: tabular-nums; }
+.tiles { margin-top: 10px; }
+.tile { grid-column: span 1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.tile .pad { width: 100%; max-width: 44px; height: 22px; border-radius: 4px; background: var(--tile); border: 1px solid var(--line); transition: background .3s, box-shadow .3s; }
+.tile.on .pad { background: #ffd66b; border-color: #e9b02f; box-shadow: 0 0 14px 4px rgba(255,200,80,.55); }
+.tile b { font: 600 12px var(--font-num); }
+.tile small { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 10px; flex-wrap: wrap; }
+.legend b { color: var(--forest); font-weight: 600; }
+.mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
+.mini div { min-width: 0; }
+.mini .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.mini .v { font: 600 20px var(--font-num); font-variant-numeric: tabular-nums; }
+
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .full { stroke: var(--muted); stroke-dasharray: 5 5; fill: none; stroke-width: 1.5; }
+.chart .actual { stroke: var(--amber); fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+.chart .area { fill: var(--amber); opacity: .15; }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart text { fill: var(--muted); font: 11px var(--font-body); }
+.keyrow { display: flex; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 6px; flex-wrap: wrap; }
+.keyrow i { display: inline-block; width: 18px; height: 0; border-top: 2.5px solid var(--amber); vertical-align: middle; margin-right: 6px; }
+.keyrow i.d { border-top: 1.5px dashed var(--muted); }
+
+.wx { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.wx .k { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.wx .v { font: 600 30px/1.1 var(--font-num); font-variant-numeric: tabular-nums; }
+.wx .v small { font-size: 16px; }
+.wx .v.alert { color: var(--danger); }
+.gauge { height: 6px; border-radius: 3px; background: var(--line); margin-top: 6px; position: relative; overflow: hidden; }
+.gauge i { position: absolute; inset: 0 auto 0 0; background: var(--forest); border-radius: 3px; transition: width .5s; }
+.gauge i.alert { background: var(--danger); }
+.advice { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 14px; }
+.advice b { font-weight: 600; }
+
+.log { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; }
+.log li { display: flex; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.log li:last-child { border-bottom: 0; }
+.log time { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.log .tag { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; background: var(--forest); }
+.log .tag.amber { background: var(--amber); }
+.log .tag.red { background: var(--danger); }
+.empty { color: var(--muted); font-size: 14px; }
+
+footer { font-size: 12px; color: var(--muted); padding-block: 20px 28px; }
+
+@media (max-width: 860px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .grid2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .kpi .num { font-size: 36px; }
+  .bulb { width: 18px; height: 18px; }
+  .path::before { top: 20px; }
+}
+@media (prefers-reduced-motion: reduce) { .bulb, .tile .pad, .gauge i { transition: none; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div>
+      <h1>Elmina Central Park · <em>tonight</em></h1>
+      <div class="zone">Jangkau · Zone P1 · smart step path</div>
+    </div>
+    <div class="pill wait" id="pill"><i></i><span id="pillText">Connecting</span></div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="controls">
+    <div class="field">
+      <label for="team">Team ID (same as the rig)</label>
+      <input type="text" id="team" value="elmina-demo" spellcheck="false" autocomplete="off">
+    </div>
+    <button class="primary" id="connectBtn" type="button">Connect</button>
+    <div class="field">
+      <span class="lbl">Data source</span>
+      <div class="seg" role="group" aria-label="Data source">
+        <button type="button" id="srcLive" aria-pressed="true">Live rig</button>
+        <button type="button" id="srcDemo" aria-pressed="false">Demo data</button>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <button class="quest" id="questBtn" type="button">Send quest from app</button>
+  </div>
+
+  <div class="banner" id="banner" hidden>Flash-flood alert: pond level is high. Alarm is on and quests near the water are paused.</div>
+
+  <section class="kpis" aria-label="Tonight in numbers">
+    <div class="kpi">
+      <div class="label">Footsteps sensed</div>
+      <div class="num" id="kSteps">0</div>
+      <div class="sub"><span id="kPerMin">0</span> in the last minute · never identified</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Neighbour quests</div>
+      <div class="num" id="kQuests">0</div>
+      <div class="sub">completed tonight</div>
+    </div>
+    <div class="kpi good">
+      <div class="label">Lamp energy saved</div>
+      <div class="num" id="kSaved">0<small>%</small></div>
+      <div class="sub">vs full brightness · <span id="kKwh">0.00</span> kWh used</div>
+    </div>
+    <div class="kpi harvest">
+      <div class="label">Harvested by tiles</div>
+      <div class="num" id="kHarvest">0<small> J</small></div>
+      <div class="sub">runs the tiles' own glow for <span id="kGlow">0</span> min</div>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <h2>Path lights and step tiles, live <span class="chip NIGHT" id="modeChip">Night</span></h2>
+      <div class="path">
+        <div class="row12" id="lamps"></div>
+        <div class="row12 tiles" id="tiles"></div>
+      </div>
+      <div class="legend"><span>Pond end · walkers enter at Tile A</span><span><b>Forest edge</b> · quiet, max 35%</span></div>
+      <div class="mini">
+        <div><div class="k">Power now</div><div class="v" id="mPower">0 W</div></div>
+        <div><div class="k">Full brightness</div><div class="v" id="mFull">0 W</div></div>
+        <div><div class="k">Mode</div><div class="v" id="mMode">Night</div></div>
+      </div>
+    </div>
+
+    <div class="panel chart">
+      <h2>Lamp power, last 2 minutes</h2>
+      <svg id="chart" viewBox="0 0 420 200" role="img" aria-label="Lamp power compared with full brightness"></svg>
+      <div class="keyrow"><span><i></i>Jangkau</span><span><i class="d"></i>Full brightness</span></div>
+    </div>
+  </section>
+
+  <section class="grid2">
+    <div class="panel">
+      <h2>Weather and water</h2>
+      <div class="wx">
+        <div><div class="k">Temperature</div><div class="v" id="wTemp">--<small> °C</small></div></div>
+        <div><div class="k">Humidity</div><div class="v" id="wHum">--<small> %</small></div></div>
+        <div><div class="k">Feels like</div><div class="v" id="wFeels">--<small> °C</small></div></div>
+        <div>
+          <div class="k">Pond level · alert 1.00 m</div>
+          <div class="v" id="wWater">--<small> m</small></div>
+          <div class="gauge"><i id="wGauge" style="width:0%"></i></div>
+        </div>
+      </div>
+      <div class="advice" id="advice">Waiting for readings.</div>
+    </div>
+
+    <div class="panel">
+      <h2>Activity</h2>
+      <ul class="log" id="log"><li class="empty">Waiting for activity from the path.</li></ul>
+    </div>
+  </section>
+
+  <footer>Simulated ESP32 rig in Wokwi, sending over MQTT. Lamp energy uses demo time (1 second = 1 minute of park time). Harvest is an estimate of about 3 J per step. Tiles sense pressure only, so people are counted, never identified.</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var BROKER = "wss://broker.hivemq.com:8884/mqtt";
+  var NUM = 12, FOREST_FROM = 9, LAMP_W = 40, TILE_LAMP = [0, 4, 8], TILE_NAMES = ["A", "B", "C"];
+  var GLOW_W = 0.05;   // one tile's LED glow, watts (for the "runs the glow for" estimate)
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var lampEls = [];
+  for (var i = 0; i < NUM; i++) {
+    var d = document.createElement("div");
+    d.className = "lamp";
+    d.innerHTML = '<div class="bulb"></div><span>0%</span>';
+    $("lamps").appendChild(d);
+    lampEls.push({ bulb: d.firstChild, pct: d.lastChild });
+  }
+  var tileEls = [];
+  for (var c = 0; c < NUM; c++) {
+    var cell = document.createElement("div");
+    var t = TILE_LAMP.indexOf(c);
+    if (t >= 0) {
+      cell.className = "tile";
+      cell.innerHTML = '<div class="pad"></div><b>Tile ' + TILE_NAMES[t] + '</b><small>0 steps</small>';
+      tileEls[t] = { el: cell, count: cell.lastChild };
+    }
+    $("tiles").appendChild(cell);
+  }
+
+  var client = null, source = "live", lastStatus = 0, history = [], demoTimer = null;
+
+  function savedTeam() { try { return localStorage.getItem("jk-team"); } catch (e) { return null; } }
+  function saveTeam(v) { try { localStorage.setItem("jk-team", v); } catch (e) {} }
+  var st = savedTeam(); if (st) $("team").value = st;
+
+  function base() { return "jangkau/" + $("team").value.trim() + "/zone/P1"; }
+  function setPill(cls, text) { $("pill").className = "pill " + cls; $("pillText").textContent = text; }
+  function num(v, dflt) { return typeof v === "number" && isFinite(v) ? v : dflt; }
+
+  // ---------- Rendering ----------
+  var modeLabel = { NIGHT: "Night", DAY: "Day", AHEAD: "Lights ahead", QUEST: "Quest glow", FLOOD: "Flood alert" };
+
+  function lampColor(i, mode) {
+    if (mode === "FLOOD" && i < 2) return [230, 50, 20];
+    if (mode === "QUEST") return [255, 150, 0];
+    if (i >= FOREST_FROM) return [255, 110, 30];
+    return [255, 170, 80];
+  }
+
+  function render(s) {
+    var harvest = num(s.harvestJ, 0);
+    $("kSteps").textContent = num(s.steps, 0);
+    $("kPerMin").textContent = num(s.perMin, 0);
+    $("kQuests").textContent = num(s.quests, 0);
+    $("kSaved").innerHTML = Math.round(num(s.savedPct, 0)) + "<small>%</small>";
+    $("kKwh").textContent = (num(s.energyWh, 0) / 1000).toFixed(2);
+    $("kHarvest").innerHTML = Math.round(harvest) + "<small> J</small>";
+    $("kGlow").textContent = (harvest / GLOW_W / 60).toFixed(1);
+    $("banner").hidden = !s.flood;
+    $("modeChip").className = "chip " + s.mode;
+    $("modeChip").textContent = modeLabel[s.mode] || s.mode;
+    $("mMode").textContent = modeLabel[s.mode] || s.mode;
+    $("mPower").textContent = Math.round(num(s.powerW, 0)) + " W";
+    $("mFull").textContent = Math.round(num(s.fullW, 0)) + " W";
+
+    for (var i = 0; i < NUM; i++) {
+      var lvl = num(s.levels && s.levels[i], 0) / 100;
+      var c = lampColor(i, s.mode), el = lampEls[i];
+      if (lvl < 0.02) {
+        el.bulb.style.background = "";
+        el.bulb.style.boxShadow = "none";
+      } else {
+        el.bulb.style.background = "rgba(" + c + "," + (0.25 + 0.75 * lvl).toFixed(2) + ")";
+        el.bulb.style.boxShadow = "0 0 " + Math.round(4 + 22 * lvl) + "px " + Math.round(2 + 8 * lvl) + "px rgba(" + c + "," + (0.55 * lvl).toFixed(2) + ")";
+      }
+      el.pct.textContent = Math.round(lvl * 100) + "%";
+    }
+    for (var t = 0; t < 3; t++) {
+      var on = s.pressed && s.pressed[t];
+      tileEls[t].el.className = "tile" + (on ? " on" : "");
+      var n = num(s.tiles && s.tiles[t], 0);
+      tileEls[t].count.textContent = n + (n === 1 ? " step" : " steps");
+    }
+
+    // weather and water
+    var water = num(s.water, null), temp = num(s.tempC, null), hum = num(s.humidity, null), feels = num(s.feelsC, null);
+    $("wTemp").innerHTML = (temp == null ? "--" : temp.toFixed(1)) + "<small> °C</small>";
+    $("wHum").innerHTML = (hum == null ? "--" : Math.round(hum)) + "<small> %</small>";
+    $("wFeels").innerHTML = (feels == null ? "--" : feels.toFixed(1)) + "<small> °C</small>";
+    $("wWater").innerHTML = (water == null ? "--" : water.toFixed(2)) + "<small> m</small>";
+    $("wWater").className = "v" + (s.flood ? " alert" : "");
+    $("wGauge").style.width = water == null ? "0%" : Math.min(100, water / 1.5 * 100) + "%";
+    $("wGauge").className = s.flood ? "alert" : "";
+    $("wFeels").className = "v" + (feels != null && feels >= 41 ? " alert" : "");
+
+    var advice;
+    if (s.flood) advice = "<b>Flood alert.</b> Quests near the pond are paused and residents are warned.";
+    else if (feels != null && feels >= 41) advice = "<b>Heat caution.</b> Suggest shaded routes and move quests to the evening.";
+    else if (feels != null && feels >= 33) advice = "<b>Warm.</b> Remind walkers to bring water; shaded quests first.";
+    else if (temp == null) advice = "Waiting for readings.";
+    else advice = "<b>Comfortable.</b> Good time for neighbour walks.";
+    $("advice").innerHTML = advice;
+
+    history.push({ p: num(s.powerW, 0), f: num(s.fullW, 0) });
+    if (history.length > 120) history.shift();
+    drawChart();
+  }
+
+  function drawChart() {
+    var W = 420, H = 200, L = 40, R = 8, T = 10, B = 24;
+    var maxY = NUM * LAMP_W * 1.1;
+    var x = function (i) { return L + (W - L - R) * (i / 119); };
+    var y = function (v) { return T + (H - T - B) * (1 - v / maxY); };
+    var out = "";
+    [0, 120, 240, 360, 480].forEach(function (v) {
+      out += '<line class="grid" x1="' + L + '" x2="' + (W - R) + '" y1="' + y(v) + '" y2="' + y(v) + '"/>';
+      out += '<text x="' + (L - 6) + '" y="' + (y(v) + 4) + '" text-anchor="end">' + v + ' W</text>';
+    });
+    out += '<text x="' + L + '" y="' + (H - 6) + '">2 min ago</text><text x="' + (W - R) + '" y="' + (H - 6) + '" text-anchor="end">now</text>';
+    if (history.length > 1) {
+      var off = 120 - history.length;
+      var pts = history.map(function (h, i) { return x(i + off).toFixed(1) + "," + y(h.p).toFixed(1); });
+      var full = history.map(function (h, i) { return x(i + off).toFixed(1) + "," + y(h.f).toFixed(1); });
+      out += '<polygon class="area" points="' + x(off).toFixed(1) + "," + y(0) + " " + pts.join(" ") + " " + x(119).toFixed(1) + "," + y(0) + '"/>';
+      out += '<polyline class="full" points="' + full.join(" ") + '"/>';
+      out += '<polyline class="actual" points="' + pts.join(" ") + '"/>';
+      out += '<circle cx="' + x(119) + '" cy="' + y(history[history.length - 1].p) + '" r="4" fill="var(--amber)"/>';
+    }
+    $("chart").innerHTML = out;
+  }
+
+  function logEvent(type, detail, water) {
+    var text = "", tag = "";
+    switch (type) {
+      case "step": text = "Step on Tile " + detail + " · tile glows, lights ahead follow"; break;
+      case "quest": text = "Neighbour quest completed (" + (detail === "app" ? "from the app" : "at the story post") + ") · path glow"; tag = "amber"; break;
+      case "quest_paused": text = "Quest paused: flood alert near the pond"; tag = "red"; break;
+      case "flood_on": text = "Pond level high (" + Number(water).toFixed(2) + " m) · alarm on, quests paused"; tag = "red"; break;
+      case "flood_off": text = "Pond level back to normal · quests open again"; break;
+      case "night": text = "Evening mode: lamps at a calm 20%"; break;
+      case "day": text = "Day mode: lamps off"; break;
+      case "online": text = detail; break;
+      default: text = type;
+    }
+    var ul = $("log");
+    var empty = ul.querySelector(".empty"); if (empty) empty.remove();
+    var li = document.createElement("li");
+    li.innerHTML = '<span><span class="tag ' + tag + '"></span></span><time></time>';
+    li.firstChild.appendChild(document.createTextNode(text));
+    li.lastChild.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    ul.insertBefore(li, ul.firstChild);
+    while (ul.children.length > 40) ul.removeChild(ul.lastChild);
+  }
+
+  // ---------- Live MQTT ----------
+  function connect() {
+    saveTeam($("team").value.trim());
+    if (client) { try { client.end(true); } catch (e) {} client = null; }
+    if (source !== "live") return;
+    if (typeof mqtt === "undefined") { setPill("", "MQTT library did not load"); return; }
+    setPill("wait", "Connecting");
+    client = mqtt.connect(BROKER, {
+      clientId: "jk-dash-" + Math.random().toString(16).slice(2, 10),
+      reconnectPeriod: 3000, connectTimeout: 8000, clean: true
+    });
+    client.on("connect", function () {
+      setPill("wait", "Waiting for rig");
+      client.subscribe(base() + "/#");
+    });
+    client.on("message", function (topic, payload) {
+      var msg = payload.toString();
+      if (topic.slice(-7) === "/status") {
+        try { var s = JSON.parse(msg); lastStatus = Date.now(); setPill("live", "Live from rig"); render(s); } catch (e) {}
+      } else if (topic.slice(-7) === "/events") {
+        try { var ev = JSON.parse(msg); logEvent(ev.type, ev.detail, ev.water); } catch (e) {}
+      } else if (topic.slice(-7) === "/online") {
+        if (msg === "true") {
+          if (!lastStatus || Date.now() - lastStatus > 6000) setPill("wait", "Rig connected, waiting for data");
+          logEvent("online", "Rig connected to the dashboard");
+        } else if (msg === "false" && (!lastStatus || Date.now() - lastStatus > 6000)) {
+          setPill("wait", "Rig not connected");
+          logEvent("online", "Rig is not connected right now. Check that Wokwi is running and the Team ID matches.");
+        }
+      }
+    });
+    client.on("error", function () { setPill("", "Connection problem, retrying"); });
+    client.on("offline", function () { setPill("", "Dashboard offline, retrying"); });
+  }
+
+  setInterval(function () {
+    if (source === "live" && client && client.connected && lastStatus && Date.now() - lastStatus > 6000) {
+      setPill("wait", "No data from rig");
+    }
+  }, 2000);
+
+  // ---------- Demo data (same rules as the firmware) ----------
+  var sim;
+  function resetSim() {
+    sim = { t: 0, night: true, steps: 0, tiles: [0, 0, 0], pressed: [0, 0, 0], quests: 0, harvest: 0,
+            water: 0.42, flood: false, temp: 29, hum: 78, rise: [], end: [], questUntil: -1,
+            energy: 0, baseline: 0, times: [], walker: -1 };
+    for (var i = 0; i < NUM; i++) { sim.rise.push(-1); sim.end.push(-1); }
+  }
+  function boost(i) {
+    if (sim.rise[i] < 0 || sim.t < sim.rise[i]) return 0;
+    var t = sim.t - sim.rise[i];
+    if (t < 300) return t / 300;
+    if (sim.t < sim.end[i]) return 1;
+    var f = sim.t - sim.end[i];
+    return f < 900 ? 1 - f / 900 : 0;
+  }
+  function aheadFrom(lamp) {
+    for (var i = Math.max(0, lamp - 1); i < NUM; i++) {
+      var rise = sim.t + Math.max(0, i - lamp) * 180, end = rise + 6300;
+      var lit = sim.rise[i] >= 0 && sim.t >= sim.rise[i] + 300 && sim.t < sim.end[i];
+      if (lit) sim.end[i] = Math.max(sim.end[i], end); else { sim.rise[i] = rise; sim.end[i] = end; }
+    }
+  }
+  function simStep(tile) {
+    sim.steps++; sim.tiles[tile]++; sim.harvest += 3; sim.times.push(sim.t);
+    sim.pressed[tile] = 1;
+    if (sim.night) aheadFrom(TILE_LAMP[tile]);
+    logEvent("step", TILE_NAMES[tile]);
+  }
+  function simQuest(src) {
+    if (sim.flood) { logEvent("quest_paused", src); return; }
+    sim.quests++; sim.questUntil = sim.t + 4000; logEvent("quest", src);
+  }
+  function simTick() {
+    var dt = 1000;
+    sim.t += dt;
+    sim.pressed = [0, 0, 0];
+    if (sim.walker < 0 && Math.random() < 0.15) sim.walker = 0;      // someone starts walking at Tile A
+    if (sim.walker >= 0) {
+      if (sim.walker % 2 === 0) simStep(sim.walker / 2);              // a step every other second
+      sim.walker++;
+      if (sim.walker > 4) sim.walker = -1;
+    }
+    if (Math.random() < 0.035) simQuest("button");
+    sim.water = Math.min(0.9, Math.max(0.3, sim.water + (Math.random() - 0.5) * 0.03));
+    sim.temp = Math.min(33, Math.max(26, sim.temp + (Math.random() - 0.5) * 0.2));
+    sim.hum = Math.min(92, Math.max(65, sim.hum + (Math.random() - 0.5) * 1.2));
+    sim.times = sim.times.filter(function (p) { return sim.t - p < 60000; });
+    var lv = [], sum = 0, questOn = sim.t < sim.questUntil;
+    for (var i = 0; i < NUM; i++) {
+      var baseL = sim.night ? 0.2 : 0, l = baseL;
+      if (sim.night) l = Math.max(l, baseL + (1 - baseL) * boost(i));
+      if (questOn) l = Math.max(l, 0.55 + 0.35 * Math.sin((sim.t % 1000) / 1000 * 2 * Math.PI));
+      if (i >= FOREST_FROM) l = Math.min(l, 0.35);
+      lv.push(l); sum += l;
+    }
+    var power = sum * LAMP_W, hours = dt / 3600000 * 60;
+    sim.energy += power * hours;
+    if (sim.night) sim.baseline += NUM * LAMP_W * hours;
+    var ahead = lv.some(function (v, i) { return boost(i) > 0; });
+    var mode = sim.flood ? "FLOOD" : questOn ? "QUEST" : (sim.night && ahead) ? "AHEAD" : sim.night ? "NIGHT" : "DAY";
+    var T = sim.temp, H = sim.hum;
+    var feels = T < 27 ? T : T + 0.33 * (H / 100 * 6.105 * Math.exp(17.27 * T / (237.7 + T))) - 4;   // apparent temperature estimate
+    render({
+      mode: mode, night: sim.night, steps: sim.steps, perMin: sim.times.length, tiles: sim.tiles, pressed: sim.pressed,
+      quests: sim.quests, powerW: power, fullW: sim.night ? NUM * LAMP_W : 0, energyWh: sim.energy, baselineWh: sim.baseline,
+      savedPct: sim.baseline > 0 ? Math.max(0, (1 - sim.energy / sim.baseline) * 100) : 0, harvestJ: sim.harvest,
+      water: sim.water, flood: sim.flood, tempC: T, humidity: H, feelsC: feels,
+      levels: lv.map(function (v) { return Math.round(v * 100); })
+    });
+  }
+
+  function setSource(s) {
+    source = s;
+    $("srcLive").setAttribute("aria-pressed", s === "live");
+    $("srcDemo").setAttribute("aria-pressed", s === "demo");
+    history = []; lastStatus = 0;
+    if (demoTimer) { clearInterval(demoTimer); demoTimer = null; }
+    if (s === "demo") {
+      if (client) { try { client.end(true); } catch (e) {} client = null; }
+      setPill("demo", "Demo data");
+      resetSim();
+      logEvent("online", "Demo data started (sample values, not from the rig)");
+      simTick();
+      demoTimer = setInterval(simTick, 1000);
+    } else {
+      connect();
+    }
+  }
+
+  $("connectBtn").addEventListener("click", function () { setSource("live"); });
+  $("team").addEventListener("keydown", function (e) { if (e.key === "Enter") setSource("live"); });
+  $("srcLive").addEventListener("click", function () { setSource("live"); });
+  $("srcDemo").addEventListener("click", function () { setSource("demo"); });
+  $("questBtn").addEventListener("click", function () {
+    if (source === "demo") { simQuest("app"); return; }
+    if (client && client.connected) client.publish(base() + "/cmd", JSON.stringify({ cmd: "quest", from: "web-app" }));
+    else setPill("", "Not connected yet");
+  });
+
+  render({ mode: "NIGHT", steps: 0, perMin: 0, quests: 0, powerW: 0, fullW: 0, energyWh: 0, savedPct: 0, harvestJ: 0, flood: false, levels: [], tiles: [0, 0, 0], pressed: [0, 0, 0] });
+  history = [];
+  drawChart();
+  connect();
+})();
+</script>
+</body>
+</html>
