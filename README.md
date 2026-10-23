@@ -8,6 +8,7 @@ Sime Darby Property University Hackathon 2026 · People track · The Null Pointe
 - **Resident app (opened by QR codes):** https://izza521.github.io/Jangkau/Jangkau_app.html
 - **Wokwi simulation:** (https://wokwi.com/projects/478632511461382145)
 - **Presentation video:** (https://youtu.be/kJ2zMwsmLPc?si=fmmPcsxzWqx7WCrY)
+- **Demo Video:** (https://youtube.com/shorts/1W1MdctQwVg?si=-d-52L6mNwjHtXBG)
 
 ## Files
 | File | What it is |
